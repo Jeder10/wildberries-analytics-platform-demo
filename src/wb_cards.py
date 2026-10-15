@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+from collections.abc import Callable
 from contextlib import closing
 from http.client import HTTPException, HTTPSConnection
 import json
@@ -9,6 +10,7 @@ from pathlib import Path
 import re
 import sys
 from time import sleep
+from typing import Literal
 
 
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
@@ -23,10 +25,26 @@ PAGE_DELAY_SECONDS = 1  # WB documents a 750 ms interval.
 CONTENT_SCOPE = 1 << 1
 READ_ONLY_SCOPE = 1 << 30
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
+NO_CONTENT = object()
 
 
 class CardCheckError(Exception):
     """An error whose message is safe to display locally."""
+
+
+class RateLimitError(CardCheckError):
+    def __init__(self, retry_after: int | None):
+        self.retry_after = retry_after
+        if retry_after is None:
+            super().__init__("HTTP 429. Достигнут лимит запросов Wildberries.")
+        else:
+            super().__init__(f"HTTP 429. Повторите запуск через {retry_after} с или позже.")
+
+
+class TransportError(CardCheckError):
+    def __init__(self, message: str, *, request_started: bool):
+        super().__init__(message)
+        self.request_started = request_started
 
 
 def read_settings(path: Path, *names: str) -> dict[str, str]:
@@ -51,16 +69,16 @@ def read_settings(path: Path, *names: str) -> dict[str, str]:
     return values
 
 
-def load_token(path: Path) -> str:
-    token = read_settings(path, "WB_API_TOKEN").get("WB_API_TOKEN")
+def load_token(path: Path, *, key: str = "WB_API_TOKEN") -> str:
+    token = read_settings(path, key).get(key)
     if not token:
-        raise CardCheckError("WB_API_TOKEN не задан в .env.")
+        raise CardCheckError(f"{key} не задан в .env.")
     return token
 
 
-def check_token_scope(token: str) -> None:
+def read_token_claims(token: str, key: str) -> dict:
     if not TOKEN_PATTERN.fullmatch(token):
-        raise CardCheckError("WB_API_TOKEN должен содержать токен Wildberries в формате JWT.")
+        raise CardCheckError(f"{key} должен содержать токен Wildberries в формате JWT.")
 
     # This check only reads permissions from the token. WB validates its signature.
     payload = token.split(".")[1]
@@ -68,13 +86,90 @@ def check_token_scope(token: str) -> None:
     try:
         claims = json.loads(base64.b64decode(padded_payload, altchars=b"-_", validate=True))
     except (ValueError, RecursionError):
-        raise CardCheckError("Не удалось прочитать права WB_API_TOKEN.") from None
+        raise CardCheckError(f"Не удалось прочитать права {key}.") from None
+    if not isinstance(claims, dict):
+        raise CardCheckError(f"Не удалось прочитать права {key}.")
+    return claims
 
-    scopes = claims.get("s") if isinstance(claims, dict) else None
+
+def check_token_scope(
+    token: str,
+    *,
+    scope: int = CONTENT_SCOPE,
+    category: str = "Контент",
+    key: str = "WB_API_TOKEN",
+) -> None:
+    scopes = read_token_claims(token, key).get("s")
     if type(scopes) is not int or scopes < 0:
-        raise CardCheckError("Не удалось прочитать права WB_API_TOKEN.")
-    if not (scopes & CONTENT_SCOPE and scopes & READ_ONLY_SCOPE):
-        raise CardCheckError("Нужен токен категории «Контент» с правами «Только чтение».")
+        raise CardCheckError(f"Не удалось прочитать права {key}.")
+    if not (scopes & scope and scopes & READ_ONLY_SCOPE):
+        raise CardCheckError(f"Нужен токен категории «{category}» с правами «Только чтение».")
+
+
+def request_readonly_json(
+    token: str, *, host: str, path: str, payload: dict, category: str
+) -> dict:
+    data = fetch_readonly_json(
+        token, method="POST", host=host, path=path, category=category, payload=payload
+    )
+    if not isinstance(data, dict):
+        raise CardCheckError("HTTP 200. Ожидался объект JSON.")
+    return data
+
+
+def fetch_readonly_json(
+    token: str,
+    *,
+    method: Literal["GET", "POST"],
+    host: str,
+    path: str,
+    category: str,
+    payload: dict | None = None,
+    parse_float: Callable[[str], object] = float,
+    allow_no_content: bool = False,
+) -> object:
+    """Send one request to a documented read-only method without following redirects."""
+    headers = {"Authorization": token}
+    body = None
+    if payload is not None:
+        body = json.dumps(payload)
+        headers["Content-Type"] = "application/json"
+
+    request_started = False
+    try:
+        with closing(HTTPSConnection(host, timeout=TIMEOUT_SECONDS)) as connection:
+            connection.connect()
+            request_started = True
+            connection.request(method, path, body=body, headers=headers)
+            with closing(connection.getresponse()) as response:
+                if response.status == 204 and allow_no_content:
+                    return NO_CONTENT
+                if response.status == 429:
+                    retry = response.getheader("X-Ratelimit-Retry", "").strip()
+                    retry_after = int(retry) if re.fullmatch(r"[0-9]{1,9}", retry) else None
+                    raise RateLimitError(retry_after)
+                if response.status == 401:
+                    raise CardCheckError("HTTP 401. Проверьте действительность токена Wildberries.")
+                if response.status == 403:
+                    raise CardCheckError(f"HTTP 403. Проверьте доступ токена к категории «{category}».")
+                if response.status != 200:
+                    raise CardCheckError(f"HTTP {response.status}. Запрос Wildberries завершился ошибкой.")
+                raw_body = response.read()
+    except TimeoutError:
+        if request_started:
+            message = "Истекло время ожидания ответа Wildberries."
+        else:
+            message = "Истекло время ожидания соединения с Wildberries."
+        raise TransportError(message, request_started=request_started) from None
+    except (OSError, HTTPException):
+        raise TransportError(
+            "Ошибка HTTPS-соединения с Wildberries.", request_started=request_started
+        ) from None
+
+    try:
+        return json.loads(raw_body, parse_float=parse_float)
+    except (ValueError, RecursionError):
+        raise CardCheckError("HTTP 200. Wildberries вернул некорректный JSON.") from None
 
 
 def request_card_sample(
@@ -87,46 +182,19 @@ def request_card_sample(
     page_cursor: dict[str, int | str] = {"limit": limit}
     if after is not None:
         page_cursor["updatedAt"], page_cursor["nmID"] = after
-    body = json.dumps({
-        "settings": {
-            "sort": {"ascending": True},
-            "cursor": page_cursor,
-            "filter": {"withPhoto": -1},
-        }
-    })
-    try:
-        with closing(HTTPSConnection(CARDS_HOST, timeout=TIMEOUT_SECONDS)) as connection:
-            connection.request(
-                "POST",
-                CARDS_PATH,
-                body=body,
-                headers={"Authorization": token, "Content-Type": "application/json"},
-            )
-            with closing(connection.getresponse()) as response:
-                if response.status == 429:
-                    retry = response.getheader("X-Ratelimit-Retry", "").strip()
-                    if re.fullmatch(r"[0-9]{1,9}", retry):
-                        raise CardCheckError(f"HTTP 429. Повторите запуск через {int(retry)} с или позже.")
-                    raise CardCheckError("HTTP 429. Достигнут лимит запросов Wildberries.")
-                if response.status == 401:
-                    raise CardCheckError("HTTP 401. Проверьте действительность токена Wildberries.")
-                if response.status == 403:
-                    raise CardCheckError("HTTP 403. Проверьте доступ токена к категории «Контент».")
-                if response.status != 200:
-                    raise CardCheckError(f"HTTP {response.status}. Запрос карточек завершился ошибкой.")
-                raw_body = response.read()
-    except TimeoutError:
-        raise CardCheckError("Истекло время ожидания ответа Wildberries.") from None
-    except (OSError, HTTPException):
-        raise CardCheckError("Ошибка HTTPS-соединения с Wildberries.") from None
-
-    try:
-        data = json.loads(raw_body)
-    except (ValueError, RecursionError):
-        raise CardCheckError("HTTP 200. Wildberries вернул некорректный JSON.") from None
-    if not isinstance(data, dict):
-        raise CardCheckError("HTTP 200. Ожидался объект JSON.")
-
+    data = request_readonly_json(
+        token,
+        host=CARDS_HOST,
+        path=CARDS_PATH,
+        category="Контент",
+        payload={
+            "settings": {
+                "sort": {"ascending": True},
+                "cursor": page_cursor,
+                "filter": {"withPhoto": -1},
+            }
+        },
+    )
     cards = data.get("cards")
     cursor = data.get("cursor")
     if not isinstance(cards, list) or len(cards) > limit:

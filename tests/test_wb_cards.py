@@ -129,11 +129,23 @@ class CardSampleTests(unittest.TestCase):
     def test_timeout_closes_connection(self):
         self.connection.getresponse.side_effect = TimeoutError("synthetic-network-detail")
 
-        with self.assertRaisesRegex(wb_cards.CardCheckError, "Истекло время ожидания") as error:
+        with self.assertRaisesRegex(wb_cards.TransportError, "Истекло время ожидания ответа") as error:
             wb_cards.request_card_sample(READ_TOKEN)
 
         self.assertNotIn("synthetic-network-detail", str(error.exception))
+        self.assertTrue(error.exception.request_started)
         self.connection.request.assert_called_once()
+        self.connection.close.assert_called_once()
+
+    def test_timeout_connecting_does_not_send_the_request(self):
+        self.connection.connect.side_effect = TimeoutError("synthetic-network-detail")
+
+        with self.assertRaisesRegex(wb_cards.TransportError, "ожидания соединения") as error:
+            wb_cards.request_card_sample(READ_TOKEN)
+
+        self.assertFalse(error.exception.request_started)
+        self.assertNotIn("synthetic-network-detail", str(error.exception))
+        self.connection.request.assert_not_called()
         self.connection.close.assert_called_once()
 
     def test_connection_error_uses_safe_message(self):
