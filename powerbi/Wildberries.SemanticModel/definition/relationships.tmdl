@@ -1,0 +1,11 @@
+relationship 49f31d15-ab72-4140-9b60-a7ea8494b5d6
+	fromColumn: Активность.Артикул
+	toColumn: Товары.Артикул
+
+relationship aa77bc02-9979-4d18-8df6-09ffc6613095
+	fromColumn: Активность.День
+	toColumn: Календарь.День
+
+relationship 612ca197-549a-41c9-a00c-fc99a5d52354
+	fromColumn: Остатки.Артикул
+	toColumn: Товары.Артикул

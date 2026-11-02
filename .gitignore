@@ -35,6 +35,9 @@ backups/
 *.pbix
 *.pbit
 .pbi/
+# Power BI report definitions are text source files.
+!/powerbi/Wildberries.Report/definition/**/*.json
+!/powerbi/Wildberries.Report/StaticResources/RegisteredResources/WildberriesTheme.json
 
 # Python build and test artifacts
 .venv/

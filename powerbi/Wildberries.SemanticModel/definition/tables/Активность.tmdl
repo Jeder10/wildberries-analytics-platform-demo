@@ -1,0 +1,75 @@
+table Активность
+	lineageTag: 1fdd0bc6-017c-432f-8304-3b1cb209dea0
+
+	measure 'Заказы, шт.' = SUM('Активность'[Оформлено])
+		formatString: #,0
+		lineageTag: 4209f210-cadd-447e-8204-483c7f201f44
+
+	measure 'Продажи, шт.' = SUM('Активность'[Продано])
+		formatString: #,0
+		lineageTag: 9ca8aa5f-3365-482a-a7f8-7007892b0da2
+
+	measure 'Возвраты, шт.' = SUM('Активность'[Возвращено])
+		formatString: #,0
+		lineageTag: 517a25cc-1947-4788-b16d-6c789298d12a
+
+	column День
+		dataType: dateTime
+		isHidden
+		formatString: dd.MM.yyyy
+		lineageTag: ee2a5bdf-1116-45c1-a873-637c7c85d593
+		summarizeBy: none
+		sourceColumn: activity_date
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column Артикул
+		dataType: int64
+		isHidden
+		lineageTag: f3f13102-8481-450c-b204-5380e680955d
+		summarizeBy: none
+		sourceColumn: nm_id
+
+	column Оформлено
+		dataType: int64
+		isHidden
+		lineageTag: 27ab675f-f010-45ea-a53f-6b15f784e08d
+		summarizeBy: none
+		sourceColumn: orders_count
+
+	column Продано
+		dataType: int64
+		isHidden
+		lineageTag: 0cd8cf6f-9c92-400b-85d7-b85b9687c2bf
+		summarizeBy: none
+		sourceColumn: sales_count
+
+	column Возвращено
+		dataType: int64
+		isHidden
+		lineageTag: 2a6ccb3d-375d-408d-bb29-c56e4a786d89
+		summarizeBy: none
+		sourceColumn: returns_count
+
+	partition Активность = m
+		mode: import
+		source =
+				let
+					Demo = #table(
+						type table [activity_date=date, nm_id=number, orders_count=nullable number, sales_count=nullable number, returns_count=nullable number],
+						{
+							{#date(2025, 2, 10), 901001, 7, 3, 0},
+							{#date(2025, 2, 10), 901002, 4, 1, 0},
+							{#date(2025, 2, 11), 901001, 8, 5, 1},
+							{#date(2025, 2, 11), 901003, 3, null, null},
+							{#date(2025, 2, 12), 901002, null, 2, 0},
+							{#date(2025, 2, 12), 901003, 5, 2, 0}
+						}
+					),
+					Source = if DemoMode then Demo else PostgreSQL.Database(PgServer, PgDatabase){[Schema="analytics", Item="daily_product_activity"]}[Data],
+					Columns = Table.SelectColumns(Source, {"activity_date", "nm_id", "orders_count", "sales_count", "returns_count"}),
+					Typed = Table.TransformColumnTypes(Columns, {{"activity_date", type date}, {"nm_id", Int64.Type}, {"orders_count", Int64.Type}, {"sales_count", Int64.Type}, {"returns_count", Int64.Type}})
+				in
+					Typed
+
+	annotation PBI_ResultType = Table

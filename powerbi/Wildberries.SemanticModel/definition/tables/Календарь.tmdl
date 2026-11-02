@@ -1,0 +1,25 @@
+table Календарь
+	lineageTag: c39706fe-3f8a-48df-bae8-1e3e89728864
+	dataCategory: Time
+
+	column День
+		dataType: dateTime
+		isKey
+		formatString: dd.MM.yyyy
+		lineageTag: f26f2f5c-24f3-4d3b-bce3-00c78a04eb0f
+		summarizeBy: none
+		sourceColumn: day
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	partition Календарь = m
+		mode: import
+		source =
+				let
+					Days = List.RemoveNulls(#"Активность"[activity_date]),
+					Start = if List.IsEmpty(Days) then Date.From(DateTime.FixedLocalNow()) else List.Min(Days),
+					Finish = if List.IsEmpty(Days) then Start else List.Max(Days),
+					CalendarDays = List.Dates(Start, Duration.Days(Finish - Start) + 1, #duration(1, 0, 0, 0)),
+					Calendar = Table.FromColumns({CalendarDays}, type table [day=date])
+				in
+					Calendar

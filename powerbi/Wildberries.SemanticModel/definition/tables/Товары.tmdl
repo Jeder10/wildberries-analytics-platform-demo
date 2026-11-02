@@ -1,0 +1,53 @@
+table Товары
+	lineageTag: 792d03fa-358c-4c1d-b220-81b250ab35e6
+
+	column Артикул
+		dataType: int64
+		formatString: 0
+		lineageTag: 016a65bf-d702-4f31-8f5a-807deb7c0282
+		summarizeBy: none
+		sourceColumn: nm_id
+
+	column 'Код продавца'
+		dataType: string
+		lineageTag: 508a5d59-72bc-44eb-a4ec-5be6c4d1144f
+		summarizeBy: none
+		sourceColumn: vendor_code
+
+	column Название
+		dataType: string
+		lineageTag: 3c092f4b-f503-4394-984a-eca3a2f7238e
+		summarizeBy: none
+		sourceColumn: title
+
+	column Бренд
+		dataType: string
+		lineageTag: 5b2b35ec-f252-49b5-8ef8-79eba0c0bfee
+		summarizeBy: none
+		sourceColumn: brand
+
+	column Товар
+		dataType: string
+		lineageTag: 2232a6d4-6cc6-4bdd-bbb2-82550e9ff770
+		summarizeBy: none
+		sourceColumn: product_label
+
+	partition Товары = m
+		mode: import
+		source =
+				let
+					Demo = #table(
+						type table [nm_id=number, vendor_code=text, title=text, brand=text],
+						{
+							{901001, "DEMO-01", "Термокружка", "Учебный каталог"},
+							{901002, "DEMO-02", "Блокнот", "Учебный каталог"},
+							{901003, "DEMO-03", "Сумка", "Учебный каталог"},
+							{901004, "DEMO-04", "Контейнер", "Учебный каталог"}
+						}
+					),
+					Source = if DemoMode then Demo else PostgreSQL.Database(PgServer, PgDatabase){[Schema="analytics", Item="product_catalog"]}[Data],
+					Columns = Table.SelectColumns(Source, {"nm_id", "vendor_code", "title", "brand"}),
+					Typed = Table.TransformColumnTypes(Columns, {{"nm_id", Int64.Type}, {"vendor_code", type text}, {"title", type text}, {"brand", type text}}),
+					WithLabel = Table.AddColumn(Typed, "product_label", each Text.From([nm_id], "en-US") & " • " & [title], type text)
+				in
+					WithLabel

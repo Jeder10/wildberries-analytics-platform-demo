@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "SemanticModel",
+    "displayName": "Wildberries"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "e900231d-74cb-47e0-b61d-fb43f371ed4d"
+  }
+}

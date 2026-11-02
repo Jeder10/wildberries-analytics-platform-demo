@@ -1,0 +1,64 @@
+table Остатки
+	lineageTag: 9dc90ccc-096a-460d-8359-1979d446ac85
+
+	measure 'Есть остаток' = COALESCE(COUNTROWS(FILTER('Остатки', 'Остатки'[Количество] > 0)), 0)
+		formatString: #,0
+		lineageTag: e6dfca44-fc12-4265-85fe-ffb9fa8dd5e8
+
+	measure 'Нулевой остаток' = COALESCE(COUNTROWS(FILTER('Остатки', 'Остатки'[Количество] == 0)), 0)
+		formatString: #,0
+		lineageTag: 13e975ff-bed4-4646-9409-bba8ac375420
+
+	measure 'Нет данных об остатке' = COALESCE(COUNTROWS(FILTER('Остатки', ISBLANK('Остатки'[Количество]))), 0)
+		formatString: #,0
+		lineageTag: 9ffa90d6-8d6f-46bc-a831-9a70f0df6a80
+
+	column Артикул
+		dataType: int64
+		formatString: 0
+		lineageTag: 78fbb9da-f47e-4e22-ab6f-936f89d5e770
+		summarizeBy: none
+		sourceColumn: nm_id
+
+	column Название
+		dataType: string
+		lineageTag: 819c22d0-bf76-4a25-8550-f840fe116812
+		summarizeBy: none
+		sourceColumn: title
+
+	column Количество
+		dataType: int64
+		formatString: #,0
+		lineageTag: 88ec0d83-7d05-4b6c-b416-63fe6106795b
+		summarizeBy: none
+		sourceColumn: quantity
+
+	column Статус
+		dataType: string
+		lineageTag: 154c60c4-66fa-46ff-a561-711214af70b2
+		summarizeBy: none
+		sourceColumn: stock_status
+
+	partition Остатки = m
+		mode: import
+		source =
+				let
+					Demo = #table(
+						type table [nm_id=number, title=text, quantity=nullable number],
+						{
+							{901001, "Термокружка", 18},
+							{901002, "Блокнот", 0},
+							{901003, "Сумка", 6},
+							{901004, "Контейнер", null}
+						}
+					),
+					Source = if DemoMode then Demo else PostgreSQL.Database(PgServer, PgDatabase){[Schema="analytics", Item="latest_product_stocks"]}[Data],
+					Columns = Table.SelectColumns(Source, {"nm_id", "title", "quantity"}),
+					Typed = Table.TransformColumnTypes(Columns, {{"nm_id", Int64.Type}, {"title", type text}, {"quantity", Int64.Type}}),
+					WithStatus = Table.AddColumn(
+						Typed, "stock_status",
+						each if [quantity] = null then "Нет данных" else if [quantity] = 0 then "Нет в наличии" else "В наличии",
+						type text
+					)
+				in
+					WithStatus
