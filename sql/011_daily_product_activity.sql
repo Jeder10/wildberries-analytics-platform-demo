@@ -3,14 +3,17 @@ CREATE SCHEMA IF NOT EXISTS analytics;
 CREATE OR REPLACE VIEW analytics.daily_product_orders AS
 WITH orders AS (
     SELECT
-        (created_at AT TIME ZONE 'Europe/Moscow')::date AS order_date,
-        nm_id
-    FROM wb.order_feed
+        (COALESCE(f.created_at, s.created_at) AT TIME ZONE 'Europe/Moscow')::date AS order_date,
+        COALESCE(f.nm_id, s.nm_id) AS nm_id,
+        COALESCE(s.is_cancelled, f.status = 'cancel') AS is_cancelled
+    FROM wb.order_feed AS f
+    FULL OUTER JOIN wb.order_statistics AS s USING (srid)
 )
 SELECT
     order_date,
     nm_id,
-    COUNT(*) AS orders_count
+    COUNT(*) AS orders_count,
+    COUNT(*) FILTER (WHERE is_cancelled) AS cancelled_orders_count
 FROM orders
 GROUP BY order_date, nm_id;
 
@@ -20,7 +23,8 @@ SELECT
     COALESCE(o.nm_id, s.nm_id) AS nm_id,
     o.orders_count,
     s.sales_count,
-    s.returns_count
+    s.returns_count,
+    o.cancelled_orders_count
 FROM analytics.daily_product_orders AS o
 FULL OUTER JOIN analytics.daily_product_sales AS s
     ON s.operation_date = o.order_date AND s.nm_id = o.nm_id;

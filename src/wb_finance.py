@@ -10,9 +10,10 @@ from .wb_cards import CardCheckError, NO_CONTENT, check_token_scope, fetch_reado
 FINANCE_SCOPE = 1 << 13
 REPORT_HOST = "finance-api.wildberries.ru"
 REPORT_PATH = "/api/finance/v1/sales-reports/detailed"
+REPORT_TIMEOUT = 60
 REPORT_FIELDS = (
     "reportId", "reportType", "dateFrom", "dateTo", "rrdId", "nmId", "currency",
-    "docTypeName", "sellerOperName", "rrDate", "retailAmount", "forPay",
+    "docTypeName", "sellerOperName", "rrDate", "retailAmount", "forPay", "orderUid",
 )
 ORDINARY_OPERATIONS = {"Продажа": "sale", "Возврат": "return"}
 
@@ -61,6 +62,7 @@ def parse_finance_page(rows: object, cursor: int) -> FinancePage:
 
         report_id, report_type, nm_id = (row.get(field) for field in ("reportId", "reportType", "nmId"))
         currency = row.get("currency")
+        order_uid = row.get("orderUid")
         if (
             row.get("docTypeName") != reason
             or any(type(value) is not int for value in (report_id, report_type, nm_id))
@@ -68,11 +70,13 @@ def parse_finance_page(rows: object, cursor: int) -> FinancePage:
             or not currency.strip()
         ):
             raise CardCheckError("В продаже или возврате не заполнены ключи, тип или валюта отчёта.")
+        if order_uid is not None and not isinstance(order_uid, str):
+            raise CardCheckError("В финансовом отчёте некорректен идентификатор корзины orderUid.")
         operations.append((
             rrd_id, report_id, report_type, parse_report_date(row, "dateFrom"),
             parse_report_date(row, "dateTo"), parse_report_date(row, "rrDate"),
             nm_id, currency, operation, parse_amount(row.get("retailAmount"), "retailAmount"),
-            parse_amount(row.get("forPay"), "forPay"),
+            parse_amount(row.get("forPay"), "forPay"), (order_uid or "").strip() or None,
         ))
     return FinancePage(cursor, len(rows), operations)
 
@@ -93,6 +97,7 @@ def request_finance_page(
         },
         parse_float=Decimal,
         allow_no_content=True,
+        timeout=REPORT_TIMEOUT,
     )
     if response is NO_CONTENT:
         return None

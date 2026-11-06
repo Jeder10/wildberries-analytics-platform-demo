@@ -7,12 +7,13 @@ import sys
 
 import psycopg
 
+from .app_paths import RESOURCE_ROOT
 from .load_wb_cards import load_database_config
 from .wb_cards import CardCheckError, ENV_PATH, load_token
 from .wb_sales import parse_sales_timestamp, request_sales_day
 
 
-SCHEMA_PATH = ENV_PATH.parent / "sql" / "004_sales_operations.sql"
+SCHEMA_PATH = RESOURCE_ROOT / "sql" / "004_sales_operations.sql"
 UPSERT_SALE = """
     INSERT INTO wb.sales_operations AS stored (
         sale_id, srid, nm_id, operation_at, source_updated_at,

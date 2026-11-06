@@ -12,8 +12,10 @@ import sys
 from time import sleep
 from typing import Literal
 
+from .app_paths import APP_ROOT
 
-ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+
+ENV_PATH = APP_ROOT / ".env"
 CARDS_HOST = "content-api.wildberries.ru"
 CARDS_PATH = "/content/v2/get/cards/list"
 TIMEOUT_SECONDS = 10
@@ -127,6 +129,7 @@ def fetch_readonly_json(
     payload: dict | None = None,
     parse_float: Callable[[str], object] = float,
     allow_no_content: bool = False,
+    timeout: int = TIMEOUT_SECONDS,
 ) -> object:
     """Send one request to a documented read-only method without following redirects."""
     headers = {"Authorization": token}
@@ -137,7 +140,7 @@ def fetch_readonly_json(
 
     request_started = False
     try:
-        with closing(HTTPSConnection(host, timeout=TIMEOUT_SECONDS)) as connection:
+        with closing(HTTPSConnection(host, timeout=timeout)) as connection:
             connection.connect()
             request_started = True
             connection.request(method, path, body=body, headers=headers)

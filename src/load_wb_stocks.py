@@ -9,13 +9,14 @@ from uuid import UUID, uuid4
 
 import psycopg
 
+from .app_paths import RESOURCE_ROOT
 from .load_wb_cards import load_database_config
 from .load_wb_sales_history import wait_for_request
 from .wb_cards import CardCheckError, ENV_PATH, RateLimitError, load_token, read_token_claims
 from .wb_stocks import MAX_PAGE_SIZE, request_product_stocks
 
 
-SCHEMA_PATH = ENV_PATH.parent / "sql" / "006_stock_snapshots.sql"
+SCHEMA_PATH = RESOURCE_ROOT / "sql" / "006_stock_snapshots.sql"
 BASIC_INTERVAL = timedelta(minutes=30)
 STANDARD_INTERVAL = timedelta(seconds=20)
 INSERT_STOCK = """

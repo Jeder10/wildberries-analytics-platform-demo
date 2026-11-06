@@ -4,6 +4,8 @@ import io
 import unittest
 from unittest.mock import MagicMock, call, patch
 
+from psycopg import sql
+
 from src import load_wb_sales_history as history
 from src.wb_cards import CardCheckError, RateLimitError, TransportError
 
@@ -73,7 +75,10 @@ class SalesHistoryTests(unittest.TestCase):
                 self.fetch.side_effect = [TransportError("Network error.", request_started=started), []]
                 with patch.object(history, "schedule_request") as schedule:
                     history.load_history(self.connection, "synthetic", DAY)
-                    self.assertEqual(schedule.call_args_list[1], call(self.connection, DAY, pause))
+                    self.assertEqual(
+                        schedule.call_args_list[1],
+                        call(self.connection, DAY, pause, sql.Identifier("wb", "sales_history_progress")),
+                    )
                 self.fetch.assert_called_with("synthetic", CURSOR)
         self.store.assert_not_called()
 

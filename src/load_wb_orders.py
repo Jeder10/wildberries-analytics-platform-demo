@@ -6,6 +6,7 @@ from time import sleep
 
 import psycopg
 
+from .app_paths import RESOURCE_ROOT
 from .load_wb_cards import load_database_config
 from .wb_cards import CardCheckError, ENV_PATH, read_token_claims
 from .wb_order_feed import (
@@ -19,7 +20,7 @@ from .wb_order_feed import (
 )
 
 
-SCHEMA_PATH = ENV_PATH.parent / "sql" / "003_order_feed.sql"
+SCHEMA_PATH = RESOURCE_ROOT / "sql" / "003_order_feed.sql"
 BASIC_TOKEN_TYPE = 1
 BASIC_REQUEST_INTERVAL = 3 * 60 * 60
 STANDARD_REQUEST_INTERVAL = 60

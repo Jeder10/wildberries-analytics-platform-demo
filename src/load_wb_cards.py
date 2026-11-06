@@ -10,6 +10,7 @@ from time import sleep
 import psycopg
 from psycopg.types.json import Jsonb
 
+from .app_paths import RESOURCE_ROOT
 from .wb_cards import (
     CardCheckError,
     ENV_PATH,
@@ -21,7 +22,7 @@ from .wb_cards import (
 )
 
 
-SCHEMA_PATH = ENV_PATH.parent / "sql" / "001_product_cards.sql"
+SCHEMA_PATH = RESOURCE_ROOT / "sql" / "001_product_cards.sql"
 DATABASE_KEYS = ("PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD")
 LOCAL_DATABASE_HOSTS = ("::1", "127.0.0.1", "localhost")
 UPSERT_CARD = """

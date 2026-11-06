@@ -20,6 +20,7 @@ SALE = {
     "rrdId": 100, "reportId": 41, "reportType": 1, "nmId": 501, "currency": "RUB",
     "docTypeName": "Продажа", "sellerOperName": "Продажа", "dateFrom": "2026-11-09",
     "dateTo": "2026-11-15", "rrDate": "2026-11-14", "retailAmount": "812.05", "forPay": "700.25",
+    "orderUid": "demo-basket",
 }
 
 
@@ -40,7 +41,7 @@ class FinanceReportTests(unittest.TestCase):
         self.assertEqual(result.last_rrd_id, 101)
         self.assertEqual(result.row_count, 2)
         self.assertEqual(len(result.operations), 1)
-        self.assertEqual(result.operations[0][-3:], ("sale", Decimal("812.05"), Decimal("700.25")))
+        self.assertEqual(result.operations[0][-4:], ("sale", Decimal("812.05"), Decimal("700.25"), "demo-basket"))
         request = self.connection.request.call_args
         self.assertEqual(request.args, ("POST", "/api/finance/v1/sales-reports/detailed"))
         self.assertEqual(json.loads(request.kwargs["body"]), {
@@ -66,6 +67,7 @@ class FinanceReportTests(unittest.TestCase):
             ([], "Ожидались строки"),
             ([SALE, SALE], "не продвигают"),
             ([{**SALE, "forPay": "NaN"}], "поле forPay"),
+            ([{**SALE, "orderUid": 42}], "orderUid"),
         ):
             with self.subTest(message=message):
                 with self.assertRaisesRegex(wb_cards.CardCheckError, message):
@@ -74,14 +76,19 @@ class FinanceReportTests(unittest.TestCase):
     def test_return_retains_the_source_amount_sign_for_the_sql_view(self):
         refund = {**SALE, "docTypeName": "Возврат", "sellerOperName": "Возврат", "retailAmount": "-10.25"}
         result = wb_finance.parse_finance_page([refund], 0)
-        self.assertEqual(result.operations[0][-3:], ("return", Decimal("-10.25"), Decimal("700.25")))
+        self.assertEqual(result.operations[0][-4:], ("return", Decimal("-10.25"), Decimal("700.25"), "demo-basket"))
+
+    def test_missing_order_uid_keeps_the_financial_line(self):
+        page = wb_finance.parse_finance_page([{**SALE, "orderUid": " "}], 0)
+        self.assertEqual(len(page.operations), 1)
+        self.assertIsNone(page.operations[0][-1])
 
 
 class FinanceReportResumeTests(unittest.TestCase):
     def test_resumes_saved_cursor_and_records_completion_only_after_204(self):
         conn = MagicMock()
         ready = datetime(2026, 11, 23, 9, 15, tzinfo=timezone.utc)
-        conn.execute.return_value.fetchone.side_effect = [(True,), (101, False, ready)]
+        conn.execute.return_value.fetchone.side_effect = [(True,), (101, False, ready, False)]
         with (
             patch.object(load_wb_finance, "initialize_load"),
             patch.object(load_wb_finance, "wait_for_request") as wait,
@@ -94,6 +101,17 @@ class FinanceReportResumeTests(unittest.TestCase):
         wait.assert_called_once_with(ready)
         fetch.assert_called_once_with(TOKEN, START, END, 101)
         self.assertEqual(save.call_args.args[:4], (conn, START, END, None))
+
+    def test_backfill_uses_its_own_cursor_and_does_not_reinsert_sales(self):
+        conn = MagicMock()
+        cursor = conn.cursor.return_value.__enter__.return_value
+        page = wb_finance.parse_finance_page([SALE, {**SALE, "rrdId": 101, "orderUid": None}], 0)
+        ready = datetime(2026, 11, 23, 9, 15, tzinfo=timezone.utc)
+
+        load_wb_finance.record_page(conn, START, END, page, ready, backfill_baskets=True)
+
+        cursor.executemany.assert_called_once_with(load_wb_finance.UPDATE_BASKET, [("demo-basket", 100)])
+        self.assertIn('"basket_last_rrd_id"', conn.execute.call_args.args[0].as_string())
 
 
 if __name__ == "__main__":

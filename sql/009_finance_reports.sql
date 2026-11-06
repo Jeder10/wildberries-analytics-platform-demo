@@ -20,5 +20,10 @@ CREATE TABLE IF NOT EXISTS wb.finance_report_lines (
     currency text NOT NULL,
     operation_type text NOT NULL CHECK (operation_type IN ('sale', 'return')),
     retail_amount numeric NOT NULL,
-    for_pay numeric NOT NULL
+    for_pay numeric NOT NULL,
+    order_uid text
 );
+
+ALTER TABLE wb.finance_report_lines ADD COLUMN IF NOT EXISTS order_uid text;
+ALTER TABLE wb.finance_report_loads ADD COLUMN IF NOT EXISTS basket_last_rrd_id bigint NOT NULL DEFAULT 0;
+ALTER TABLE wb.finance_report_loads ADD COLUMN IF NOT EXISTS basket_completed boolean NOT NULL DEFAULT false;
