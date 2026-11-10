@@ -1,14 +1,14 @@
 {
   "name": "Wildberries Analytics",
   "dataColors": [
-    "#6548CE",
-    "#13846D",
-    "#A5690C",
+    "#6242C4",
+    "#087767",
+    "#925709",
     "#8E6CDA",
     "#1A6F94",
     "#D86769"
   ],
-  "background": "#F5F3FB",
-  "foreground": "#22203B",
-  "tableAccent": "#6548CE"
+  "background": "#F5F3FA",
+  "foreground": "#241B3C",
+  "tableAccent": "#6242C4"
 }

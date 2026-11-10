@@ -1,0 +1,32 @@
+table 'История остатков'
+	lineageTag: 64fe80f6-e4e0-49c5-bde9-f0034bb365fe
+
+	measure 'Остаток на конец дня, шт.' = SUM('История остатков'[Количество])
+		formatString: #,0
+		lineageTag: 99ba1ca9-39d1-4c76-89f2-ab8d1a6accbc
+
+	column День
+		dataType: dateTime
+		formatString: dd.MM.yyyy
+		summarizeBy: none
+		sourceColumn: day
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column Артикул
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: nm_id
+
+	column Количество
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: quantity
+
+	partition 'История остатков' = m
+		mode: import
+		source =
+				if DemoMode then #table(type table [day=date, nm_id=Int64.Type, quantity=Int64.Type], {})
+				else PostgreSQL.Database(PgServer, PgDatabase){[Schema="analytics", Item="report_stock_history"]}[Data]

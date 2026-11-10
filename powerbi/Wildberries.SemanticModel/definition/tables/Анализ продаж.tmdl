@@ -1,0 +1,140 @@
+table 'Анализ продаж'
+	lineageTag: 081bca7a-57bc-4d51-86c1-b3f7ff7f2e1a
+
+	measure 'Оплата после возвратов' =
+			IF(
+				HASONEVALUE('Типы отчётов'[Тип отчёта]) && HASONEVALUE('Валюты'[Валюта]),
+				SUM('Анализ продаж'[Нетто-оплата])
+			)
+		formatString: #,0.00
+		lineageTag: 109e486b-c321-43a1-90f9-18da6a403ae9
+
+	measure 'Средний чек' =
+			VAR MissingBaskets =
+				CALCULATE(COUNTROWS('Анализ продаж'), 'Анализ продаж'[Операция] = "sale", ISBLANK('Анализ продаж'[Корзина]))
+			VAR BasketCount =
+				CALCULATE(DISTINCTCOUNTNOBLANK('Анализ продаж'[Корзина]), 'Анализ продаж'[Операция] = "sale")
+			VAR Paid = CALCULATE(SUM('Анализ продаж'[Сумма]), 'Анализ продаж'[Операция] = "sale")
+			RETURN
+				IF(
+					HASONEVALUE('Типы отчётов'[Тип отчёта]) && HASONEVALUE('Валюты'[Валюта]) && MissingBaskets = 0,
+					DIVIDE(Paid, BasketCount)
+				)
+		formatString: #,0.00
+		lineageTag: 02f24bd5-8fcc-43f1-aba7-bbfaca05ec34
+
+	measure 'Оплата за месяц' =
+			VAR MonthStart = SELECTEDVALUE('Календарь'[Месяц])
+			VAR HasCoverage = SELECTEDVALUE('Календарь'[Полный месяц финансов], FALSE())
+			RETURN
+				IF(
+					NOT ISBLANK(MonthStart) && HasCoverage
+						&& HASONEVALUE('Типы отчётов'[Тип отчёта]) && HASONEVALUE('Валюты'[Валюта]),
+					COALESCE(
+						CALCULATE([Оплата после возвратов], REMOVEFILTERS('Календарь'), 'Календарь'[Месяц] = MonthStart),
+						0
+					)
+				)
+		formatString: #,0.00
+		lineageTag: e057b1ca-bdfc-403b-82c8-853cf1ce51f5
+
+	measure 'MoM, %' =
+			VAR MonthStart = SELECTEDVALUE('Календарь'[Месяц])
+			VAR CurrentAmount = [Оплата за месяц]
+			RETURN
+				IF(
+					NOT ISBLANK(MonthStart) && NOT ISBLANK(CurrentAmount),
+					VAR PriorMonthStart = EDATE(MonthStart, -1)
+					VAR PreviousAmount = CALCULATE([Оплата за месяц], REMOVEFILTERS('Календарь'), 'Календарь'[Месяц] = PriorMonthStart)
+					RETURN DIVIDE(CurrentAmount - PreviousAmount, PreviousAmount)
+				)
+		formatString: 0.0%
+		lineageTag: 22177d66-9f56-4584-85e3-85bc3eca7cc0
+
+	measure 'Класс ABC' =
+			VAR ProductName = SELECTEDVALUE('Анализ продаж'[Товар])
+			VAR ProductAmount = [Оплата после возвратов]
+			RETURN
+				IF(
+					ISINSCOPE('Анализ продаж'[Товар]) && ProductAmount > 0,
+					VAR RankedProducts = FILTER(
+						ADDCOLUMNS(ALLSELECTED('Анализ продаж'[Товар]), "@Оплата", CALCULATE([Оплата после возвратов])),
+						[@Оплата] > 0
+					)
+					VAR HigherRankedTotal = SUMX(
+						FILTER(RankedProducts, [@Оплата] > ProductAmount || ([@Оплата] = ProductAmount && 'Анализ продаж'[Товар] < ProductName)),
+						[@Оплата]
+					)
+					VAR BeforeShare = DIVIDE(COALESCE(HigherRankedTotal, 0), SUMX(RankedProducts, [@Оплата]))
+					RETURN SWITCH(TRUE(), BeforeShare < 0.80, "A", BeforeShare < 0.95, "B", "C")
+				)
+		lineageTag: 4d8d33a4-3dca-44c0-bb28-643de5a02fc7
+
+	column 'День операции'
+		dataType: dateTime
+		formatString: dd.MM.yyyy
+		isHidden
+		summarizeBy: none
+		sourceColumn: operation_date
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column 'Код типа отчёта'
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: report_type
+
+	column Валюта
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: currency
+
+	column Товар
+		dataType: string
+		summarizeBy: none
+		sourceColumn: product_label
+
+	column Операция
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: operation_type
+
+	column Корзина
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: order_uid
+
+	column Сумма
+		dataType: decimal
+		isHidden
+		summarizeBy: none
+		sourceColumn: retail_amount
+
+	column 'Нетто-оплата'
+		dataType: decimal
+		isHidden
+		summarizeBy: none
+		sourceColumn: buyer_net_paid
+
+	partition 'Анализ продаж' = m
+		mode: import
+		source =
+				if DemoMode then
+					#table(
+						type table [operation_date=date, report_type=Int64.Type, currency=text, product_label=text, operation_type=text, order_uid=nullable text, retail_amount=Currency.Type, buyer_net_paid=Currency.Type],
+						{
+							{#date(2025, 1, 15), 1, "RUB", "901001 • Демотовар А", "sale", "demo-jan-1", 800.00, 800.00},
+							{#date(2025, 1, 15), 1, "RUB", "901002 • Демотовар Б", "sale", "demo-jan-2", 150.00, 150.00},
+							{#date(2025, 1, 15), 1, "RUB", "901003 • Демотовар В", "sale", "demo-jan-2", 50.00, 50.00},
+							{#date(2025, 2, 10), 1, "RUB", "901001 • Демотовар А", "sale", "demo-feb", 1200.00, 1200.00},
+							{#date(2025, 2, 11), 1, "RUB", "901002 • Демотовар Б", "sale", "demo-feb", 725.50, 725.50},
+							{#date(2025, 2, 12), 1, "RUB", "901001 • Демотовар А", "return", "demo-return", 320.50, -320.50},
+							{#date(2025, 2, 11), 2, "RUB", "901003 • Демотовар В", "sale", "demo-buyout-1", 480.00, 480.00},
+							{#date(2025, 2, 12), 2, "RUB", "901002 • Демотовар Б", "sale", "demo-buyout-2", 300.00, 300.00}
+						}
+					)
+				else PostgreSQL.Database(PgServer, PgDatabase){[Schema="analytics", Item="report_finance_analysis"]}[Data]

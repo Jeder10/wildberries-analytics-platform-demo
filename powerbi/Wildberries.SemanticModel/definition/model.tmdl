@@ -6,7 +6,7 @@ model Model
 		legacyRedirects
 		returnErrorValuesAsNull
 
-annotation PBI_QueryOrder = ["Товары","Активность","Календарь","Остатки","DemoMode","PgServer","PgDatabase"]
+annotation PBI_QueryOrder = ["Товары","Активность","Календарь","Остатки","История остатков","Финансы","Валюты","Воронка","Типы отчётов","Анализ продаж","DemoMode","PgServer","PgDatabase"]
 
 annotation __PBI_TimeIntelligenceEnabled = 1
 
@@ -16,3 +16,9 @@ ref table Товары
 ref table Активность
 ref table Календарь
 ref table Остатки
+ref table 'История остатков'
+ref table Финансы
+ref table Валюты
+ref table Воронка
+ref table 'Типы отчётов'
+ref table 'Анализ продаж'

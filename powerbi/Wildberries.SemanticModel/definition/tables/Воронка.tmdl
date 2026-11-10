@@ -1,0 +1,104 @@
+table Воронка
+	lineageTag: c530ae40-62f9-46b4-9679-4aecffd4bdc8
+
+	measure 'Заказали, шт.' = SUM('Воронка'[Заказы])
+		formatString: #,0
+		lineageTag: f718fe59-18ec-4562-aa23-0b9322a98a53
+
+	measure 'Выкупили, шт.' = SUM('Воронка'[Выкупы])
+		formatString: #,0
+		lineageTag: 7ec6ad6d-b063-4d54-824c-1e99f54548e4
+
+	measure 'Отмены и возвраты, шт.' = SUM('Воронка'[Отмены])
+		formatString: #,0
+		lineageTag: 84b6504e-fff8-46d3-a30c-04c4f244d52c
+
+	measure 'Доля выкупа' = DIVIDE([Выкупили, шт.], [Заказали, шт.])
+		formatString: 0.0%
+		lineageTag: e89542ac-0e7d-4a29-9572-2cea6ba4d2b2
+
+	column Месяц
+		dataType: string
+		lineageTag: e9506afc-2d29-4a40-ada2-6b9b6bd62a4f
+		summarizeBy: none
+		sourceColumn: month_label
+
+	column 'Данные по'
+		dataType: dateTime
+		formatString: dd.MM.yyyy
+		lineageTag: 6f2217e5-4fcd-4046-ab80-0f0c688f6c1c
+		summarizeBy: none
+		sourceColumn: period_end
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column Артикул
+		dataType: string
+		lineageTag: ae5e349e-f2e4-48a4-8f75-e20feadb3bc4
+		summarizeBy: none
+		sourceColumn: item_label
+
+	column Товар
+		dataType: string
+		summarizeBy: none
+		sourceColumn: product_label
+
+	column 'Покрытие месяца'
+		dataType: string
+		lineageTag: b803949e-5a55-4619-b078-fe73c5c691af
+		summarizeBy: none
+		sourceColumn: month_coverage
+
+	column Заказы
+		dataType: int64
+		isHidden
+		lineageTag: c5673ced-bd20-4cf4-9d32-04b4c7e59c95
+		summarizeBy: sum
+		sourceColumn: order_count
+
+		annotation SummarizationSetBy = Automatic
+
+	column Выкупы
+		dataType: int64
+		isHidden
+		lineageTag: 8ddbeea9-f3f7-4649-88fc-9dc6c988e4b6
+		summarizeBy: sum
+		sourceColumn: buyout_count
+
+		annotation SummarizationSetBy = Automatic
+
+	column Отмены
+		dataType: int64
+		isHidden
+		lineageTag: 9c4e6123-f8c0-4c09-81eb-41bfb20be73a
+		summarizeBy: sum
+		sourceColumn: cancel_or_return_count
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Воронка = m
+		mode: import
+		source =
+				let
+					Demo = #table(
+						type table [period_start=date, period_end=date, nm_id=number, order_count=number, buyout_count=number, cancel_or_return_count=number, full_month=logical],
+						{
+							{#date(2025, 1, 1), #date(2025, 1, 31), 901001, 28, 21, 5, true},
+							{#date(2025, 1, 1), #date(2025, 1, 31), 901002, 19, 13, 4, true},
+							{#date(2025, 2, 1), #date(2025, 2, 12), 901001, 15, 9, 1, false},
+							{#date(2025, 2, 1), #date(2025, 2, 12), 901002, 7, 3, 0, false},
+							{#date(2025, 2, 1), #date(2025, 2, 12), 901003, 5, 1, 0, false}
+						}
+					),
+					Typed = Table.TransformColumnTypes(Demo, {{"period_start", type date}, {"period_end", type date}, {"nm_id", Int64.Type}, {"order_count", Int64.Type}, {"buyout_count", Int64.Type}, {"cancel_or_return_count", Int64.Type}, {"full_month", type logical}}),
+					Month = Table.AddColumn(Typed, "month_label", each Date.ToText([period_start], "yyyy-MM", "en-US"), type text),
+					Items = Table.AddColumn(Month, "item_label", each Text.From([nm_id], "en-US"), type text),
+					WithCoverage = Table.AddColumn(Items, "month_coverage", each if [full_month] then "Полный месяц" else "Неполный месяц", type text),
+					DemoTitles = [#"901001" = "Термокружка", #"901002" = "Блокнот", #"901003" = "Сумка"],
+					WithLabels = Table.AddColumn(WithCoverage, "product_label", each [item_label] & " • " & Record.FieldOrDefault(DemoTitles, [item_label], "Без карточки"), type text),
+					Columns = Table.SelectColumns(WithLabels, {"month_label", "period_end", "item_label", "month_coverage", "order_count", "buyout_count", "cancel_or_return_count", "product_label"})
+				in
+					if DemoMode then Columns else PostgreSQL.Database(PgServer, PgDatabase){[Schema="analytics", Item="report_funnel"]}[Data]
+
+	annotation PBI_ResultType = Table
+

@@ -5,6 +5,9 @@ table Активность
 		formatString: #,0
 		lineageTag: 4209f210-cadd-447e-8204-483c7f201f44
 
+	measure 'Отмены заказов, шт.' = SUM('Активность'[Отменено])
+		formatString: #,0
+
 	measure 'Продажи, шт.' = SUM('Активность'[Продано])
 		formatString: #,0
 		lineageTag: 9ca8aa5f-3365-482a-a7f8-7007892b0da2
@@ -12,6 +15,33 @@ table Активность
 	measure 'Возвраты, шт.' = SUM('Активность'[Возвращено])
 		formatString: #,0
 		lineageTag: 517a25cc-1947-4788-b16d-6c789298d12a
+
+	measure 'Даты дневных записей' =
+			VAR OrderRows = FILTER(ALL('Активность'), NOT ISBLANK('Активность'[Оформлено]))
+			VAR OperationRows =
+				FILTER(
+					ALL('Активность'),
+					NOT ISBLANK('Активность'[Продано]) || NOT ISBLANK('Активность'[Возвращено])
+				)
+			VAR FirstOrderDay = MINX(OrderRows, 'Активность'[День])
+			VAR LastOrderDay = MAXX(OrderRows, 'Активность'[День])
+			VAR FirstOperationDay = MINX(OperationRows, 'Активность'[День])
+			VAR LastOperationDay = MAXX(OperationRows, 'Активность'[День])
+			VAR OrderRange =
+				IF(
+					ISBLANK(FirstOrderDay), "нет записей",
+					FORMAT(FirstOrderDay, "dd.MM.yyyy") & "–" & FORMAT(LastOrderDay, "dd.MM.yyyy")
+				)
+			VAR OperationRange =
+				IF(
+					ISBLANK(FirstOperationDay), "нет записей",
+					FORMAT(FirstOperationDay, "dd.MM.yyyy") & "–" & FORMAT(LastOperationDay, "dd.MM.yyyy")
+				)
+			RETURN
+				IF(ISEMPTY('Активность'), "По выбранным фильтрам записей нет.  ", "") &
+					"Доступные даты  ·  Заказы " & OrderRange & "  ·  Продажи и возвраты " & OperationRange
+		isHidden
+		lineageTag: 7f9ed127-9873-435d-8325-a509ca0d5381
 
 	column День
 		dataType: dateTime
@@ -37,6 +67,12 @@ table Активность
 		summarizeBy: none
 		sourceColumn: orders_count
 
+	column Отменено
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: cancelled_orders_count
+
 	column Продано
 		dataType: int64
 		isHidden
@@ -56,20 +92,21 @@ table Активность
 		source =
 				let
 					Demo = #table(
-						type table [activity_date=date, nm_id=number, orders_count=nullable number, sales_count=nullable number, returns_count=nullable number],
+						type table [activity_date=date, nm_id=number, orders_count=nullable number, sales_count=nullable number, returns_count=nullable number, cancelled_orders_count=nullable number],
 						{
-							{#date(2025, 2, 10), 901001, 7, 3, 0},
-							{#date(2025, 2, 10), 901002, 4, 1, 0},
-							{#date(2025, 2, 11), 901001, 8, 5, 1},
-							{#date(2025, 2, 11), 901003, 3, null, null},
-							{#date(2025, 2, 12), 901002, null, 2, 0},
-							{#date(2025, 2, 12), 901003, 5, 2, 0}
+							{#date(2025, 2, 10), 901001, 7, 3, 0, 0},
+							{#date(2025, 2, 10), 901002, 4, 1, 0, 1},
+							{#date(2025, 2, 11), 901001, 8, 5, 1, 0},
+							{#date(2025, 2, 11), 901003, 3, null, null, 1},
+							{#date(2025, 2, 12), 901002, null, 2, 0, null},
+							{#date(2025, 2, 12), 901003, 5, 2, 0, 0}
 						}
 					),
 					Source = if DemoMode then Demo else PostgreSQL.Database(PgServer, PgDatabase){[Schema="analytics", Item="daily_product_activity"]}[Data],
-					Columns = Table.SelectColumns(Source, {"activity_date", "nm_id", "orders_count", "sales_count", "returns_count"}),
-					Typed = Table.TransformColumnTypes(Columns, {{"activity_date", type date}, {"nm_id", Int64.Type}, {"orders_count", Int64.Type}, {"sales_count", Int64.Type}, {"returns_count", Int64.Type}})
+					Columns = Table.SelectColumns(Source, {"activity_date", "nm_id", "orders_count", "sales_count", "returns_count", "cancelled_orders_count"}),
+					Typed = Table.TransformColumnTypes(Columns, {{"activity_date", type date}, {"nm_id", Int64.Type}, {"orders_count", Int64.Type}, {"sales_count", Int64.Type}, {"returns_count", Int64.Type}, {"cancelled_orders_count", Int64.Type}})
 				in
 					Typed
 
 	annotation PBI_ResultType = Table
+

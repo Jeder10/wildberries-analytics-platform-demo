@@ -1,0 +1,122 @@
+table Финансы
+	lineageTag: 9ee113aa-9a8b-4ae2-a2ce-ef38bebeb5dd
+
+	measure 'Оплата покупателей' =
+			IF(
+				HASONEVALUE('Финансы'[Тип отчёта]) && HASONEVALUE('Финансы'[Валюта]),
+				SUM('Финансы'[Оплата])
+			)
+		formatString: #,0.00
+		lineageTag: 998442cc-0ba5-4dc9-bbb1-95f75a429339
+
+	measure 'Начислено за товар' =
+			IF(
+				HASONEVALUE('Финансы'[Тип отчёта]) && HASONEVALUE('Финансы'[Валюта]),
+				SUM('Финансы'[Начисление])
+			)
+		formatString: #,0.00
+		lineageTag: b0452d7d-4588-4af1-9f4c-327323eb8bac
+
+	measure 'Оплата по дням' = IF(HASONEVALUE('Валюты'[Валюта]), [Оплата покупателей])
+		formatString: #,0.00
+		isHidden
+		lineageTag: a69dbfda-4d97-4ef3-99c9-2cf07c64e207
+
+	measure 'Начислено по дням' = IF(HASONEVALUE('Валюты'[Валюта]), [Начислено за товар])
+		formatString: #,0.00
+		isHidden
+		lineageTag: b38a346a-e793-410e-ab97-2bd3d7d354ee
+
+	column 'День операции'
+		dataType: dateTime
+		formatString: dd.MM.yyyy
+		lineageTag: dd682eb1-4945-4026-9f94-45c24ec9bbf8
+		summarizeBy: none
+		sourceColumn: operation_date
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column Артикул
+		dataType: int64
+		formatString: 0
+		lineageTag: cc334acb-1f96-40c3-924c-649030c1a071
+		summarizeBy: none
+		sourceColumn: nm_id
+
+	column 'Номер отчёта'
+		dataType: int64
+		formatString: 0
+		lineageTag: a711bf9d-5603-48cd-be72-1e5f6367c66a
+		summarizeBy: none
+		sourceColumn: report_id
+
+	column 'Тип отчёта'
+		dataType: string
+		lineageTag: 1e3203eb-3946-4b70-8dd7-5f5897c862cf
+		summarizeBy: none
+		sourceColumn: report_type_label
+
+	column Валюта
+		dataType: string
+		lineageTag: 744347c7-52c5-4c20-9271-ec40167be6df
+		summarizeBy: none
+		sourceColumn: currency
+
+	column Оплата
+		dataType: double
+		isHidden
+		lineageTag: cbe51562-477a-4185-be88-601ebba0b338
+		summarizeBy: none
+		sourceColumn: buyer_net_paid
+
+	column Начисление
+		dataType: double
+		isHidden
+		lineageTag: 88d1d2a1-ebd5-4ae6-bcb3-cd306a91ec53
+		summarizeBy: none
+		sourceColumn: seller_net_for_goods
+
+	column report_type
+		dataType: int64
+		formatString: 0
+		lineageTag: d622b48b-a104-4fb5-ba4a-ad36e9be0ccb
+		summarizeBy: sum
+		sourceColumn: report_type
+
+		annotation SummarizationSetBy = Automatic
+
+	partition Финансы = m
+		mode: import
+		source =
+				let
+					Demo = #table(
+						type table [report_id=number, report_type=number, operation_date=date, nm_id=number, currency=text, buyer_net_paid=number, seller_net_for_goods=number, report_complete=logical],
+						{
+							{700, 1, #date(2025, 1, 15), 901001, "RUB", 800.00, 650.00, true},
+							{700, 1, #date(2025, 1, 15), 901002, "RUB", 150.00, 120.00, true},
+							{700, 1, #date(2025, 1, 15), 901003, "RUB", 50.00, 40.00, true},
+							{701, 1, #date(2025, 2, 10), 901001, "RUB", 1200.00, 984.60, true},
+							{701, 1, #date(2025, 2, 11), 901002, "RUB", 725.50, 550.40, true},
+							{701, 1, #date(2025, 2, 12), 901001, "RUB", -320.50, -248.10, true},
+							{702, 2, #date(2025, 2, 11), 901003, "RUB", 480.00, 389.25, true},
+							{702, 2, #date(2025, 2, 12), 901002, "RUB", 300.00, 228.15, true},
+							{703, 1, #date(2025, 2, 12), 901001, "RUB", 2500.00, 1800.00, false}
+						}
+					),
+					Source = if DemoMode then Demo else PostgreSQL.Database(PgServer, PgDatabase){[Schema="analytics", Item="daily_product_money"]}[Data],
+					Completed = Table.SelectRows(Source, each [report_complete] = true),
+					Columns = Table.SelectColumns(Completed, {"report_id", "report_type", "operation_date", "nm_id", "currency", "buyer_net_paid", "seller_net_for_goods"}),
+					Typed = Table.TransformColumnTypes(Columns, {{"report_id", Int64.Type}, {"report_type", Int64.Type}, {"operation_date", type date}, {"nm_id", Int64.Type}, {"currency", type text}, {"buyer_net_paid", type number}, {"seller_net_for_goods", type number}}),
+					WithLabel = Table.AddColumn(
+						Typed,
+						"report_type_label",
+						each if [report_type] = 1 then "Основной"
+							else if [report_type] = 2 then "По выкупам"
+							else Text.From([report_type], "en-US"),
+						type text
+					)
+				in
+					WithLabel
+
+	annotation PBI_ResultType = Table
+

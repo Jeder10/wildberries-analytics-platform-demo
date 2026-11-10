@@ -1,0 +1,16 @@
+table Валюты
+	lineageTag: 3c9886b8-234f-408f-86e0-a81cf6dec3ea
+
+	column Валюта
+		dataType: string
+		isKey
+		lineageTag: cf3c830e-d3b5-486e-8ee9-eaa2273296c6
+		summarizeBy: none
+		sourceColumn: currency
+
+	partition Валюты = m
+		mode: import
+		source = Table.Distinct(Table.SelectColumns(#"Финансы", {"currency"}))
+
+	annotation PBI_ResultType = Table
+

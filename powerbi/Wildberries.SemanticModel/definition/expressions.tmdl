@@ -12,3 +12,4 @@ expression PgDatabase = "" meta [IsParameterQuery=true, Type="Text", IsParameter
 	lineageTag: 922a2fda-b6b5-4f0c-861e-1023350fb5f4
 
 	annotation PBI_ResultType = Text
+

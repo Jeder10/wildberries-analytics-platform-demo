@@ -12,14 +12,54 @@ table Календарь
 
 		annotation UnderlyingDateTimeDataType = Date
 
+	column Месяц
+		dataType: dateTime
+		formatString: MMMM yyyy
+		summarizeBy: none
+		sourceColumn: month_start
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column 'Полный месяц финансов'
+		dataType: boolean
+		isHidden
+		summarizeBy: none
+		sourceColumn: complete_finance_month
+
+	column 'Есть заказы или операции'
+		dataType: boolean
+		isHidden
+		summarizeBy: none
+		sourceColumn: has_activity
+
+	column 'Есть история остатков'
+		dataType: boolean
+		isHidden
+		summarizeBy: none
+		sourceColumn: has_stock_history
+
+	column 'Есть финансовые операции'
+		dataType: boolean
+		isHidden
+		summarizeBy: none
+		sourceColumn: has_finance
+
 	partition Календарь = m
 		mode: import
 		source =
 				let
-					Days = List.RemoveNulls(#"Активность"[activity_date]),
-					Start = if List.IsEmpty(Days) then Date.From(DateTime.FixedLocalNow()) else List.Min(Days),
-					Finish = if List.IsEmpty(Days) then Start else List.Max(Days),
+					ActivityDays = List.Distinct(#"Активность"[activity_date]),
+					StockDays = List.Distinct(#"История остатков"[day]),
+					FinanceDays = List.Distinct(#"Финансы"[operation_date]),
+					Days = List.Combine({ActivityDays, StockDays, FinanceDays}),
+					Start = Date.StartOfYear(List.Min(Days)),
+					Finish = List.Max(Days),
 					CalendarDays = List.Dates(Start, Duration.Days(Finish - Start) + 1, #duration(1, 0, 0, 0)),
-					Calendar = Table.FromColumns({CalendarDays}, type table [day=date])
+					Calendar = Table.FromColumns({CalendarDays}, type table [day=date]),
+					Months = Table.AddColumn(Calendar, "month_start", each Date.StartOfMonth([day]), type date),
+					Coverage = Table.AddColumn(Months, "complete_finance_month", each List.Contains({#date(2025, 1, 1), #date(2025, 2, 1)}, [month_start]), type logical),
+					WithActivity = Table.AddColumn(Coverage, "has_activity", each List.Contains(ActivityDays, [day]), type logical),
+					WithStock = Table.AddColumn(WithActivity, "has_stock_history", each List.Contains(StockDays, [day]), type logical),
+					Demo = Table.AddColumn(WithStock, "has_finance", each List.Contains(FinanceDays, [day]), type logical)
 				in
-					Calendar
+					if DemoMode then Demo else PostgreSQL.Database(PgServer, PgDatabase){[Schema="analytics", Item="report_days"]}[Data]

@@ -9,3 +9,32 @@ relationship aa77bc02-9979-4d18-8df6-09ffc6613095
 relationship 612ca197-549a-41c9-a00c-fc99a5d52354
 	fromColumn: Остатки.Артикул
 	toColumn: Товары.Артикул
+
+relationship 54ccaf18-ca60-4dbf-8336-b74d6378d256
+	fromColumn: 'История остатков'.Артикул
+	toColumn: Товары.Артикул
+
+relationship 451053da-4be0-4249-a66c-376b1318c9d9
+	fromColumn: 'История остатков'.День
+	toColumn: Календарь.День
+
+relationship ff433674-fda6-4a14-a0d8-0e8580883890
+	fromColumn: Финансы.Артикул
+	toColumn: Товары.Артикул
+
+relationship a3cc4abd-4897-4755-93ca-e0efaa3c2501
+	fromColumn: Финансы.Валюта
+	toColumn: Валюты.Валюта
+
+relationship 6c79501b-f4a3-4e57-8955-0083c27d78b8
+	fromColumn: 'Анализ продаж'.'День операции'
+	toColumn: Календарь.День
+
+relationship a9997090-00d5-422c-aa91-1a6aca098995
+	fromColumn: 'Анализ продаж'.Валюта
+	toColumn: Валюты.Валюта
+
+relationship 95e675f8-d4ed-4c14-8c71-e036a7d88a8e
+	fromColumn: 'Анализ продаж'.'Код типа отчёта'
+	toColumn: 'Типы отчётов'.Код
+

@@ -51,3 +51,4 @@ table Товары
 					WithLabel = Table.AddColumn(Typed, "product_label", each Text.From([nm_id], "en-US") & " • " & [title], type text)
 				in
 					WithLabel
+

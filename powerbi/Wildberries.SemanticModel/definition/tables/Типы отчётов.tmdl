@@ -1,0 +1,21 @@
+table 'Типы отчётов'
+	lineageTag: 3da9af48-e32e-42cc-b8b3-72a8d0534c11
+
+	column Код
+		dataType: int64
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: report_type
+
+	column 'Тип отчёта'
+		dataType: string
+		summarizeBy: none
+		sourceColumn: report_type_label
+
+	partition 'Типы отчётов' = m
+		mode: import
+		source =
+				if DemoMode then
+					#table(type table [report_type=Int64.Type, report_type_label=text], {{1, "Основной"}, {2, "По выкупам"}})
+				else PostgreSQL.Database(PgServer, PgDatabase){[Schema="analytics", Item="report_money_types"]}[Data]
