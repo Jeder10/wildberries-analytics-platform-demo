@@ -52,6 +52,7 @@ __pycache__/
 htmlcov/
 build/
 dist/
+/Wildberries Analytics.exe
 *.egg-info/
 *.log
 

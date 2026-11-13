@@ -7,6 +7,7 @@
 - [Показатели](docs/metrics.md)
 - [Power BI](docs/power-bi.md)
 - [Демонстрация](docs/power-bi-demo.md)
+- [Панель выгрузок](docs/export-panel.md)
 
 ## Локальная разработка
 
@@ -23,3 +24,7 @@ python -m venv .venv
 ## Демонстрация
 
 Откройте `powerbi/Wildberries.pbip` в Power BI Desktop и нажмите «Обновить». По умолчанию модель использует вымышленные данные.
+
+## Панель Windows
+
+Запустите `Выгрузки Wildberries.cmd` для работы со своим PostgreSQL. Для сборки EXE используйте [инструкцию](docs/export-panel.md#сборка-windows).
